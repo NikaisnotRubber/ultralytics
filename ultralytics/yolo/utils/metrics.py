@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ultralytics.yolo.utils import LOGGER, SimpleClass, TryExcept, plt_settings
+from ultralytics.yolo.utils import LOGGER, SimpleClass, TryExcept, plt_settings, iou
 
 OKS_SIGMA = np.array([.26, .25, .25, .35, .35, .79, .79, .72, .72, .62, .62, 1.07, 1.07, .87, .87, .89, .89]) / 10.0
 
@@ -72,7 +72,7 @@ def box_iou(box1, box2, eps=1e-7):
     # IoU = inter / (area1 + area2 - inter)
     return inter / ((a2 - a1).prod(2) + (b2 - b1).prod(2) - inter + eps)
 
-
+'''
 def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
     """
     Calculate Intersection over Union (IoU) of box1(1, 4) to box2(n, 4).
@@ -127,7 +127,27 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7
         c_area = cw * ch + eps  # convex area
         return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
     return iou  # IoU
-
+'''
+def bbox_iou(box1, box2, xywh=True, type_='CIoU',eps=1e-7):
+    # Returns Intersection over Union (IoU) of box1(1,4) to box2(n,4)
+    # Get the coordinates of bounding boxes
+    if xywh:  # transform from xywh to xyxy
+        (x1, y1, w1, h1), (x2, y2, w2, h2) = box1.chunk(4, -1), box2.chunk(4, -1)
+        w1_, h1_, w2_, h2_ = w1 / 2, h1 / 2, w2 / 2, h2 / 2
+        b1_x1, b1_x2, b1_y1, b1_y2 = x1 - w1_, x1 + w1_, y1 - h1_, y1 + h1_
+        b2_x1, b2_x2, b2_y1, b2_y2 = x2 - w2_, x2 + w2_, y2 - h2_, y2 + h2_
+    else:  # x1, y1, x2, y2 = box1
+        b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
+        b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
+        w1, h1 = b1_x2 - b1_x1, b1_y2 - b1_y1 + eps
+        w2, h2 = b2_x2 - b2_x1, b2_y2 - b2_y1 + eps
+    # 将边界框信息拼接
+    b1 = torch.stack([b1_x1, b1_y1, b1_x2, b1_y2], dim=-1)
+    b2 = torch.stack([b2_x1, b2_y1, b2_x2, b2_y2], dim=-1)
+    self = IoU_Cal(b1, b2)
+    loss = getattr(IoU_Cal, type_)(b1, b2, self=self)
+    iou = 1 - self.iou
+    return loss, iou
 
 def mask_iou(mask1, mask2, eps=1e-7):
     """
